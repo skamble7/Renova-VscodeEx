@@ -1,35 +1,31 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import WorkspaceLanding from "@/components/workspace/WorkspaceLanding";
+import { useRenovaStore } from "@/stores/useRenovaStore";
+import { vscode } from "./lib/vscode";
+import { useEffect } from "react";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const currentWorkspaceId = useRenovaStore((s) => s.currentWorkspaceId);
+  const switchWorkspace = useRenovaStore((s) => s.switchWorkspace);
+
+  // Restore last selected workspace
+  useEffect(() => {
+    const saved = vscode.getState<{ currentWorkspaceId?: string }>();
+    if (saved?.currentWorkspaceId && !currentWorkspaceId) {
+      switchWorkspace(saved.currentWorkspaceId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist selection
+  useEffect(() => {
+    const saved = vscode.getState<any>() || {};
+    vscode.setState({ ...saved, currentWorkspaceId });
+  }, [currentWorkspaceId]);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div className="min-h-screen w-screen bg-neutral-950 text-neutral-100">
+      <WorkspaceLanding />
+    </div>
+  );
 }
-
-export default App

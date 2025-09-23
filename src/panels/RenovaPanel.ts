@@ -1,55 +1,123 @@
-import * as vscode from 'vscode';
-import { getNonce } from '../getNonce';
-import * as path from 'path';
-import * as fs from 'fs';
+// src/panels/RenovaPanel.ts
+import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
+import { RenovaWorkspaceService } from "../services/RenovaWorkspaceService";
 
 export class RenovaPanel {
-  public static readonly viewType = 'renova.panel';
-  private static panel: vscode.WebviewPanel | undefined;
+  public static currentPanel: RenovaPanel | undefined;
+  private readonly panel: vscode.WebviewPanel;
+  private readonly extensionUri: vscode.Uri;
 
-  static show(context: vscode.ExtensionContext) {
-    if (this.panel) { this.panel.reveal(vscode.ViewColumn.One); return; }
+  public static postToWebview(message: unknown) {
+    const p = RenovaPanel.currentPanel?.panel;
+    if (p) p.webview.postMessage(message);
+  }
 
-    this.panel = vscode.window.createWebviewPanel(
-      this.viewType,
-      'Renova',
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, 'media', 'renova-ui'))]
-      }
-    );
+  public static createOrShow(extensionUri: vscode.Uri) {
+    const column = vscode.ViewColumn.One;
+    if (RenovaPanel.currentPanel) {
+      RenovaPanel.currentPanel.panel.reveal(column);
+      return;
+    }
+    const panel = vscode.window.createWebviewPanel("renova", "Renova", column, {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media", "renova-ui")],
+      retainContextWhenHidden: true,
+    });
+    RenovaPanel.currentPanel = new RenovaPanel(panel, extensionUri);
+  }
 
-    this.panel.onDidDispose(() => { this.panel = undefined; });
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+    this.panel = panel;
+    this.extensionUri = extensionUri;
+    this.panel.webview.html = this.getHtmlForWebview(panel.webview);
+    this.setMessageListener();
+    this.panel.onDidDispose(() => (RenovaPanel.currentPanel = undefined));
+  }
 
-    const nonce = getNonce();
-    const uiRoot = path.join(context.extensionPath, 'media', 'renova-ui');
-    const indexHtmlPath = path.join(uiRoot, 'index.html');
-    let html = fs.readFileSync(indexHtmlPath, 'utf-8');
+  private setMessageListener() {
+    this.panel.webview.onDidReceiveMessage(async (message) => {
+      const { type, token, payload } = message ?? {};
+      const reply = (ok: boolean, data?: any, error?: string) =>
+        this.panel.webview.postMessage({ token, ok, data, error });
 
-    // Replace asset placeholders with webview URIs
-    html = html.replace(/"\/assets\//g, `"${this.panel.webview.asWebviewUri(vscode.Uri.file(path.join(uiRoot, 'assets'))).toString()}/`);
+      try {
+        switch (type) {
+          // -------- Workspaces only --------
+          case "workspace:list": {
+            const data = await RenovaWorkspaceService.list();
+            reply(true, data);
+            break;
+          }
+          case "workspace:create": {
+            const data = await RenovaWorkspaceService.create(payload);
+            reply(true, data);
+            break;
+          }
+          case "workspace:get": {
+            const { id } = payload ?? {};
+            const data = await RenovaWorkspaceService.get(id);
+            reply(true, data);
+            break;
+          }
+          case "workspace:update": {
+            const { id, patch } = payload ?? {};
+            const data = await RenovaWorkspaceService.update(id, patch);
+            reply(true, data);
+            break;
+          }
 
-    // CSP
-    const csp = [
-      "default-src 'none'",
-      `img-src ${this.panel.webview.cspSource} https: data:`,
-      `style-src ${this.panel.webview.cspSource} 'unsafe-inline'`,
-      `script-src 'nonce-${nonce}'`,
-      `font-src ${this.panel.webview.cspSource} https: data:`
-    ].join('; ');
-
-    html = html.replace('</head>', `<meta http-equiv="Content-Security-Policy" content="${csp}"></head>`);
-    html = html.replace('<script type="module"', `<script nonce="${nonce}" type="module"`);
-
-    this.panel.webview.html = html;
-
-    this.panel.webview.onDidReceiveMessage((msg) => {
-      switch (msg.type) {
-        case 'ping':
-          this.panel?.webview.postMessage({ type: 'pong' });
-          break;
+          case "hello": { reply(true, { ok: true }); break; }
+          default:
+            reply(false, undefined, `Unhandled message type: ${type}`);
+        }
+      } catch (e: any) {
+        reply(false, undefined, e?.message ?? String(e) ?? "Unknown error");
       }
     });
+  }
+
+  private getHtmlForWebview(webview: vscode.Webview): string {
+    const manifestCandidates = [
+      path.join(this.extensionUri.fsPath, "media", "renova-ui", ".vite", "manifest.json"),
+      path.join(this.extensionUri.fsPath, "media", "renova-ui", "manifest.json"),
+    ];
+    const manifestPath = manifestCandidates.find(fs.existsSync);
+    if (!manifestPath) {
+      vscode.window.showErrorMessage("Vite build not found. Run `npm run build` in renova-ui.");
+      return "<html><body><h3>Build missing</h3></body></html>";
+    }
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    const entryKey = manifest["index.html"] ? "index.html" : Object.keys(manifest)[0];
+    const entry = manifest[entryKey];
+    const scriptFile: string = entry.file;
+    const cssFile: string | undefined = entry.css?.[0];
+
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "media", "renova-ui", scriptFile)
+    );
+    const styleUri = cssFile
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "renova-ui", cssFile))
+      : undefined;
+
+    return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html, body, #root { height:100%; width:100%; }
+  body { margin:0 !important; padding:0 !important; background:#0a0a0a; }
+  #root { position:fixed; inset:0; }
+</style>
+${styleUri ? `<link rel="stylesheet" href="${styleUri}">` : ""}
+<title>Renova</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="${scriptUri}"></script>
+</body>
+</html>`;
   }
 }
