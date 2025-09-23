@@ -1,41 +1,74 @@
 {
   "name": "renovaext",
-  "displayName": "renovaext",
-  "description": "Moderniztion Platform",
+  "displayName": "Renova",
+  "description": "Renova VS Code extension UI (workspaces panel)",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.104.0"
+    "vscode": "^1.99.3"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:renova.open",
+    "onView:renovaLauncher"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "renovaext.helloWorld",
-        "title": "Hello World"
+        "command": "renova.open",
+        "title": "Renova: Open",
+        "category": "Renova",
+        "icon": {
+          "dark": "media/renova-ui/renova-icon.svg",
+          "light": "media/renova-ui/renova-icon.svg"
+        }
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "renova",
+          "title": "Renova",
+          "icon": "media/renova-ui/renova-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "renova": [
+        {
+          "id": "renovaLauncher",
+          "name": "Renova"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "renovaLauncher",
+        "contents": "Launch your Renova workspaces.\n\n[Open Renova](command:renova.open)"
       }
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "ui:build": "npm --prefix webview-ui/renova-ui run build",
+    "ui:dev": "npm --prefix webview-ui/renova-ui run dev",
+    "build": "npm run ui:build && npm run compile",
+    "vscode:prepublish": "npm run build",
+    "package": "vsce package"
   },
   "devDependencies": {
-    "@types/vscode": "^1.104.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
+    "@types/vscode": "^1.99.3",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
-    "eslint": "^9.32.0",
-    "typescript": "^5.9.2",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2"
-  }
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.32.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {}
 }
