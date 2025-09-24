@@ -10,8 +10,10 @@ import ArtifactView from "./ArtifactView";
 import StartLearningDrawer from "./forms/StartLearningDrawer";
 import { Search } from "lucide-react";
 
-// NEW: Runs tab (ported from RainaV2)
+// Runs tab (ported from RainaV2)
 import RunsTab from "@/components/runs/RunsTab";
+
+type TabKey = "overview" | "artifacts" | "conversations" | "runs" | "timeline";
 
 export default function WorkspaceDetail({
   workspaceId,
@@ -36,7 +38,7 @@ export default function WorkspaceDetail({
   } = useRenovaStore();
 
   const [learnOpen, setLearnOpen] = useState(false);
-  const [tab, setTab] = useState<"artifacts" | "runs">("artifacts");
+  const [tab, setTab] = useState<TabKey>("artifacts");
 
   useEffect(() => {
     switchWorkspace(workspaceId);
@@ -62,12 +64,15 @@ export default function WorkspaceDetail({
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — headers only for now (Overview / Artifacts / Conversations / Runs / Timeline) */}
           <div className="absolute left-1/2 -translate-x-1/2">
-            <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+            <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
               <TabsList className="mx-auto">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+                <TabsTrigger value="conversations">Conversations</TabsTrigger>
                 <TabsTrigger value="runs">Runs</TabsTrigger>
+                <TabsTrigger value="timeline">Timeline</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -127,12 +132,10 @@ export default function WorkspaceDetail({
       <div className="flex-1 overflow-hidden min-h-0">
         {tab === "runs" ? (
           // RUNS TAB: full-width content handled by RunsTab
-          <div className="max-w-[1400px] mx-auto w-full h-full px-4 py-4 min-h-0">
-            <div className="h-full rounded-2xl border border-neutral-800 bg-neutral-900/50 overflow-hidden">
-              <RunsTab workspaceId={workspaceId} />
-            </div>
+          <div className="flex-1 min-h-0">
+            <RunsTab workspaceId={workspaceId} />
           </div>
-        ) : (
+        ) : tab === "artifacts" ? (
           // ARTIFACTS TAB: two-column layout
           <div
             className={[
@@ -231,6 +234,17 @@ export default function WorkspaceDetail({
             <div className="h-full overflow-auto min-h-0">
               <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 h-full min-h-0">
                 <ArtifactView />
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Placeholder panels for tabs not yet implemented
+          <div className="max-w-[1400px] mx-auto w-full h-full px-4 py-4">
+            <div className="h-full rounded-2xl border border-neutral-800 bg-neutral-900/50 flex items-center justify-center">
+              <div className="text-sm text-neutral-400">
+                {tab === "overview" && "Overview is coming soon."}
+                {tab === "conversations" && "Conversations will land here."}
+                {tab === "timeline" && "Timeline will visualize learning over time."}
               </div>
             </div>
           </div>
