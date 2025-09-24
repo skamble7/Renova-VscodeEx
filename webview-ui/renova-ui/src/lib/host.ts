@@ -19,10 +19,26 @@ function ensureListener() {
 }
 
 export type HostReq =
+  // workspaces
   | { type: "workspace:list" }
   | { type: "workspace:create"; payload: { name: string; description?: string; created_by?: string } }
   | { type: "workspace:get"; payload: { id: string } }
-  | { type: "workspace:update"; payload: { id: string; patch: { name?: string; description?: string } } };
+  | { type: "workspace:update"; payload: { id: string; patch: { name?: string; description?: string } } }
+  // consolidated doc
+  | { type: "workspace:getDoc"; payload: { id: string } }
+  // artifacts (read)
+  | { type: "artifact:get"; payload: { workspaceId: string; artifactId: string } }
+  | { type: "artifact:head"; payload: { workspaceId: string; artifactId: string } }
+  | { type: "artifact:history"; payload: { workspaceId: string; artifactId: string } }
+  // registry
+  | { type: "registry:kinds:list"; payload?: { limit?: number; offset?: number } }
+  | { type: "registry:kind:get"; payload: { key: string } }
+  // learning run
+  | { type: "runs:start"; payload: { requestBody: any } }
+  | { type: "runs:start"; payload: { requestBody: any } }
+  | { type: "runs:list";  payload: { workspaceId: string; limit?: number; offset?: number } }
+  | { type: "runs:get";   payload: { runId: string } }
+  | { type: "runs:delete";payload: { runId: string } };
 
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");

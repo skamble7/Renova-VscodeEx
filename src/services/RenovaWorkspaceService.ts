@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // src/services/RenovaWorkspaceService.ts
+
 export type RawWorkspace = {
   id?: string;
   _id?: string;
@@ -33,11 +34,29 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
   };
 }
 
-const API_BASE = "http://127.0.0.1:8010"; // workspace-service only
+const API_BASE = "http://127.0.0.1:8010";        // workspace-service
+const ARTIFACT_BASE = "http://localhost:9011";   // artifact-service (registry + artifacts)
+const LEARNING_BASE = "http://localhost:9013";   // learning-service
+
+type Json = any;
 
 async function json<T = any>(res: Response): Promise<T> {
   const text = await res.text();
   return text ? (JSON.parse(text) as T) : (undefined as any);
+}
+
+function qs(params: Record<string, any | undefined>) {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null) continue;
+    u.set(k, String(v));
+  }
+  const s = u.toString();
+  return s ? `?${s}` : "";
+}
+
+function getEtag(h: Headers) {
+  return h.get("ETag") ?? h.get("etag") ?? undefined;
 }
 
 export const RenovaWorkspaceService = {
@@ -78,4 +97,83 @@ export const RenovaWorkspaceService = {
     const data = await json<RawWorkspace>(res);
     return normalizeWorkspace(data);
   },
+
+  // ---- Workspace detail (artifact-service consolidated doc) ----
+  async getDetail(workspaceId: string) {
+    const url = `${ARTIFACT_BASE}/artifact/${workspaceId}/parent?include_deleted=false`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to get workspace detail (${res.status})`);
+    return await json(res);
+  },
+
+  // ---- Artifacts ----
+  async getArtifact(workspaceId: string, artifactId: string) {
+    const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}`);
+    if (!res.ok) throw new Error(`Failed to get artifact (${res.status})`);
+    const etag = getEtag(res.headers);
+    const data = await json(res);
+    return { data, etag };
+  },
+
+  async headArtifact(workspaceId: string, artifactId: string) {
+    const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}`, { method: "HEAD" });
+    if (!res.ok) throw new Error(`Failed to head artifact (${res.status})`);
+    return getEtag(res.headers);
+  },
+
+  async history(workspaceId: string, artifactId: string) {
+    const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}/history`);
+    if (!res.ok) throw new Error(`Failed to fetch history (${res.status})`);
+    return await json(res);
+  },
+
+  // ---- Registry (kinds) ----
+  async registryKindsList(limit = 200, offset = 0) {
+    const res = await fetch(`${ARTIFACT_BASE}/registry/kinds${qs({ limit, offset })}`);
+    if (!res.ok) throw new Error(`Failed to fetch kinds list (${res.status})`);
+    return await json(res);
+  },
+
+  async registryKindGet(key: string) {
+    const res = await fetch(`${ARTIFACT_BASE}/registry/kinds/${encodeURIComponent(key)}`);
+    if (!res.ok) throw new Error(`Failed to fetch kind ${key} (${res.status})`);
+    return await json(res);
+  },
+
+  // ---- Learning Runs ----
+  async startLearning(requestBody: any) {
+    // Ensure workspace_id is present
+    if (!requestBody?.workspace_id) throw new Error("workspace_id is required");
+    const res = await fetch(`${LEARNING_BASE}/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody ?? {}),
+    });
+    const txt = await res.text().catch(() => "");
+    if (!res.ok) throw new Error(`Failed to start learning (${res.status}) ${txt}`);
+    return txt ? JSON.parse(txt) : undefined;
+  },
+
+  async listRuns(workspaceId: string, opts?: { limit?: number; offset?: number }) {
+    const url = `${LEARNING_BASE}/runs${qs({
+      workspace_id: workspaceId,
+      limit: opts?.limit,
+      offset: opts?.offset,
+    })}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to list runs (${res.status})`);
+    return await json(res); // expect array
+  },
+
+  async getRun(runId: string) {
+    const res = await fetch(`${LEARNING_BASE}/runs/${encodeURIComponent(runId)}`);
+    if (!res.ok) throw new Error(`Failed to get run (${res.status})`);
+    return await json(res);
+  },
+
+  async deleteRun(runId: string) {
+    const res = await fetch(`${LEARNING_BASE}/runs/${encodeURIComponent(runId)}`, { method: "DELETE" });
+    if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete run (${res.status})`);
+  },
+  
 };

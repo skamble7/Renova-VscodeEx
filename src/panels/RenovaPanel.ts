@@ -44,7 +44,7 @@ export class RenovaPanel {
 
       try {
         switch (type) {
-          // -------- Workspaces only --------
+          // ---- Workspaces ----
           case "workspace:list": {
             const data = await RenovaWorkspaceService.list();
             reply(true, data);
@@ -65,6 +65,76 @@ export class RenovaPanel {
             const { id, patch } = payload ?? {};
             const data = await RenovaWorkspaceService.update(id, patch);
             reply(true, data);
+            break;
+          }
+
+          // ---- Workspace consolidated doc (artifacts + header) ----
+          case "workspace:getDoc": {
+            const { id } = payload ?? {};
+            const data = await RenovaWorkspaceService.getDetail(id);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Artifacts (read-only for now) ----
+          case "artifact:get": {
+            const { workspaceId, artifactId } = payload ?? {};
+            const out = await RenovaWorkspaceService.getArtifact(workspaceId, artifactId);
+            reply(true, out);
+            break;
+          }
+          case "artifact:head": {
+            const { workspaceId, artifactId } = payload ?? {};
+            const etag = await RenovaWorkspaceService.headArtifact(workspaceId, artifactId);
+            reply(true, { etag });
+            break;
+          }
+          case "artifact:history": {
+            const { workspaceId, artifactId } = payload ?? {};
+            const data = await RenovaWorkspaceService.history(workspaceId, artifactId);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Registry (kinds) ----
+          case "registry:kinds:list": {
+            const { limit = 200, offset = 0 } = payload ?? {};
+            const data = await RenovaWorkspaceService.registryKindsList(limit, offset);
+            reply(true, data);
+            break;
+          }
+          case "registry:kind:get": {
+            const { key } = payload ?? {};
+            const data = await RenovaWorkspaceService.registryKindGet(key);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Learning run ----
+          case "runs:start": {
+            const { requestBody } = payload ?? {};
+            const data = await RenovaWorkspaceService.startLearning(requestBody);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Learning runs (list/get/delete) ----
+          case "runs:list": {
+            const { workspaceId, limit, offset } = payload ?? {};
+            const data = await RenovaWorkspaceService.listRuns(workspaceId, { limit, offset });
+            reply(true, data);
+            break;
+          }
+          case "runs:get": {
+            const { runId } = payload ?? {};
+            const data = await RenovaWorkspaceService.getRun(runId);
+            reply(true, data);
+            break;
+          }
+          case "runs:delete": {
+            const { runId } = payload ?? {};
+            await RenovaWorkspaceService.deleteRun(runId);
+            reply(true, { ok: true });
             break;
           }
 
