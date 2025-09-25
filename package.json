@@ -3,15 +3,12 @@
   "displayName": "Renova",
   "description": "Renova VS Code extension UI (workspaces panel)",
   "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.99.3"
-  },
-  "categories": [
-    "Other"
-  ],
+  "engines": { "vscode": "^1.99.3" },
+  "categories": ["Other"],
   "activationEvents": [
     "onCommand:renova.open",
-    "onView:renovaLauncher"
+    "onView:renovaLauncher",
+    "onCommand:renova.notifications.openOutput"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -24,8 +21,23 @@
           "dark": "media/renova-ui/renova-icon.svg",
           "light": "media/renova-ui/renova-icon.svg"
         }
+      },
+      {
+        "command": "renova.notifications.openOutput",
+        "title": "Renova: Show Notifications Output",
+        "category": "Renova"
       }
     ],
+    "configuration": {
+      "title": "Renova",
+      "properties": {
+        "renova.notificationWsUrl": {
+          "type": "string",
+          "default": "ws://localhost:8016/ws",
+          "description": "WebSocket endpoint for the shared notification service."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -37,10 +49,7 @@
     },
     "views": {
       "renova": [
-        {
-          "id": "renovaLauncher",
-          "name": "Renova"
-        }
+        { "id": "renovaLauncher", "name": "Renova" }
       ]
     },
     "viewsWelcome": [
@@ -68,7 +77,10 @@
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.32.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.9.2"
   },
-  "dependencies": {}
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
 }

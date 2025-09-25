@@ -38,9 +38,55 @@ exports.deactivate = deactivate;
 // src/extension.ts
 const vscode = __importStar(require("vscode"));
 const RenovaPanel_1 = require("./panels/RenovaPanel");
+const NotificationStream_1 = require("./services/NotificationStream");
 // Change this to "close" if you prefer hiding the entire Side Bar after launch.
 const DISMISS_MODE = "explorer";
+let notifStream = null;
+let output = null;
 function activate(context) {
+    // ---- Output panel + WebSocket stream -------------------------------------
+    output = vscode.window.createOutputChannel("RENOVA Notifications");
+    context.subscriptions.push(output);
+    const cfg = vscode.workspace.getConfiguration("renova");
+    // NOTE: fixed the typo "loaclhost" -> "localhost"
+    const wsUrl = cfg.get("notificationWsUrl", "ws://localhost:8016/ws");
+    const forward = (evt) => {
+        // Always forward the raw event for any interested UI
+        RenovaPanel_1.RenovaPanel.postToWebview({ type: "runs:event", payload: evt });
+        // If this is a step event for Renova learning, forward a targeted message too
+        const rk = evt?.meta?.routing_key || evt?.routing_key || evt?.topic;
+        const isStep = (typeof rk === "string" && rk.startsWith("renova.learning.step")) ||
+            evt?.type === "learning.step" || evt?.event === "learning.step";
+        if (isStep) {
+            const payload = evt?.data ?? evt;
+            RenovaPanel_1.RenovaPanel.postToWebview({ type: "runs:step", payload });
+        }
+    };
+    notifStream = new NotificationStream_1.NotificationStream({
+        url: wsUrl,
+        channel: output,
+        autoStart: true,
+        onEvent: forward,
+    });
+    context.subscriptions.push({ dispose: () => notifStream?.dispose() });
+    // React to config changes (URL)
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration("renova.notificationWsUrl")) {
+            const newUrl = vscode.workspace
+                .getConfiguration("renova")
+                .get("notificationWsUrl", wsUrl);
+            output?.appendLine(`[RENOVA] WS URL changed to ${newUrl}. Reconnecting...`);
+            notifStream?.dispose();
+            notifStream = new NotificationStream_1.NotificationStream({
+                url: newUrl,
+                channel: output,
+                autoStart: true,
+                onEvent: forward,
+            });
+        }
+    }));
+    // Quick command to show the notifications output
+    context.subscriptions.push(vscode.commands.registerCommand("renova.notifications.openOutput", () => output?.show(true)));
     // ---- Command to open the Renova webview ---
     const openCmd = vscode.commands.registerCommand("renova.open", () => {
         RenovaPanel_1.RenovaPanel.createOrShow(context.extensionUri);
@@ -71,18 +117,22 @@ function activate(context) {
             void launchAndDismiss();
         }
     };
-    if (view.visible) {
+    if (view.visible)
         maybeLaunch();
-    }
     const visSub = view.onDidChangeVisibility((e) => {
-        if (e.visible) {
+        if (e.visible)
             maybeLaunch();
-        }
-        else {
+        else
             launchedThisVisibility = false;
-        }
     });
     context.subscriptions.push(visSub);
+    // Show the notifications panel on activation so users see live events
+    output.show(true);
 }
-function deactivate() { }
+function deactivate() {
+    notifStream?.dispose();
+    notifStream = null;
+    output?.dispose();
+    output = null;
+}
 //# sourceMappingURL=extension.js.map
