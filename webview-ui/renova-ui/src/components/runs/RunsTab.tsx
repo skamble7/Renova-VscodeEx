@@ -11,7 +11,8 @@ import StepTracker from "./StepTracker";
 type Props = { workspaceId: string };
 
 export default function RunsTab({ workspaceId }: Props) {
-  const { runs, loadRuns, deleteRun, refreshRun, startRun, selectedRunId, selectRun, applyStepEvent } = useRenovaStore();
+  const { runs, loadRuns, deleteRun, refreshRun, startRun, selectedRunId, selectRun, applyStepEvent } =
+    useRenovaStore();
 
   const [q, setQ] = useState("");
   const [showStart, setShowStart] = useState(false);
@@ -35,7 +36,9 @@ export default function RunsTab({ workspaceId }: Props) {
     )
   );
 
-  useEffect(() => { loadRuns(); }, [loadRuns]);
+  useEffect(() => {
+    loadRuns();
+  }, [loadRuns]);
 
   useEffect(() => {
     if (!selectedRunId && runs.length > 0) selectRun(runs[0].run_id);
@@ -48,7 +51,6 @@ export default function RunsTab({ workspaceId }: Props) {
       if (!payload) return;
 
       if (type === "runs:step") {
-        // payload is evt.data already; store handles shapes
         applyStepEvent(payload);
         return;
       }
@@ -85,29 +87,53 @@ export default function RunsTab({ workspaceId }: Props) {
   }, [q, runs]);
 
   return (
-    <div className="h-full w-full relative">
-      <div className="grid h-full" style={{ gridTemplateColumns: collapsed ? "0px minmax(0,1fr)" : "360px minmax(0,1fr)" }}>
+    <div className="h-full min-h-0 w-full relative">
+      <div
+        className="grid h-full min-h-0"
+        style={{ gridTemplateColumns: collapsed ? "0px minmax(0,1fr)" : "360px minmax(0,1fr)" }}
+      >
         {/* LEFT: runs list */}
-        <div className={["bg-neutral-950/60", collapsed ? "" : "border-r border-neutral-800"].join(" ")}>
+        <div
+          className={[
+            "bg-neutral-950/60",
+            collapsed ? "" : "border-r border-neutral-800",
+            "h-full min-h-0 flex flex-col",
+          ].join(" ")}
+        >
           {!collapsed && (
             <>
-              <div className="p-3 flex items-center gap-2">
-                <Input placeholder="Search runs…" value={q} onChange={(e) => setQ(e.target.value)} className="w-full" />
+              <div className="sticky top-0 z-10 p-3 flex items-center gap-2 bg-neutral-950/80 backdrop-blur border-b border-neutral-800">
+                <Input
+                  placeholder="Search runs…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  className="w-full"
+                />
                 <Button onClick={() => loadRuns()}>Refresh</Button>
-                <Button variant="secondary" onClick={() => setShowStart((s) => !s)}>Start</Button>
-                <Button variant="ghost" size="icon" onClick={() => setCollapsed(true)} title="Collapse runs">
+                <Button variant="secondary" onClick={() => setShowStart((s) => !s)}>
+                  Start
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setCollapsed(true)}
+                  title="Collapse runs"
+                >
                   <ChevronLeft size={18} />
                 </Button>
               </div>
 
               {showStart && (
-                <div className="mx-3 mb-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
+                <div className="mx-3 mt-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
                   <div className="flex items-center justify-between">
                     <div className="font-medium text-neutral-200">Start a new learning run</div>
-                    <Button size="sm" variant="ghost" onClick={() => setShowStart(false)}>Close</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setShowStart(false)}>
+                      Close
+                    </Button>
                   </div>
                   <p className="mt-2 text-sm text-neutral-400">
-                    This JSON is sent to the learning service (<code className="font-mono">workspace_id</code> will be filled in automatically).
+                    This JSON is sent to the learning service (
+                    <code className="font-mono">workspace_id</code> will be filled in automatically).
                   </p>
                   <textarea
                     className="mt-2 w-full min-h-40 rounded-md border border-neutral-700 bg-neutral-900 p-2 font-mono text-sm"
@@ -127,7 +153,7 @@ export default function RunsTab({ workspaceId }: Props) {
                             selectRun(runId);
                           }
                         } catch {
-                          // optional toast
+                          // noop (could toast)
                         }
                       }}
                     >
@@ -137,7 +163,7 @@ export default function RunsTab({ workspaceId }: Props) {
                 </div>
               )}
 
-              <div className="overflow-auto pb-3">
+              <div className="flex-1 min-h-0 overflow-y-scroll pb-3 [scrollbar-gutter:stable]">
                 {filtered.length === 0 ? (
                   <div className="px-3 py-6 text-neutral-400 text-sm">
                     {q ? "No runs match your search." : "No runs yet. Start one to see it here."}
@@ -149,7 +175,10 @@ export default function RunsTab({ workspaceId }: Props) {
                         key={r.run_id}
                         run={r}
                         selected={r.run_id === selectedRunId}
-                        onSelect={(id) => { selectRun(id); refreshRun(id); }}
+                        onSelect={(id) => {
+                          selectRun(id);
+                          refreshRun(id);
+                        }}
                         onRefresh={refreshRun}
                         onDelete={deleteRun}
                       />
@@ -162,7 +191,7 @@ export default function RunsTab({ workspaceId }: Props) {
         </div>
 
         {/* RIGHT: step tracker + diff panel */}
-        <div className={`relative min-w-0 overflow-auto p-4 ${collapsed ? "pl-12" : ""}`}>
+        <div className={`relative min-w-0 min-h-0 overflow-auto p-4 ${collapsed ? "pl-12" : ""}`}>
           {collapsed && (
             <div className="absolute left-2 top-2 z-10">
               <Button
@@ -179,7 +208,12 @@ export default function RunsTab({ workspaceId }: Props) {
 
           <StepTracker runId={selectedRunId ?? null} className="mb-4" />
 
-          <RunsDiffPanel workspaceId={workspaceId} runs={runs} selectedRunId={selectedRunId ?? null} />
+          {/* New: panel renders diffs grouped by kind for the single selected run */}
+          <RunsDiffPanel
+            workspaceId={workspaceId}
+            runs={runs}
+            selectedRunId={selectedRunId ?? null}
+          />
         </div>
       </div>
     </div>

@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState } from "react";
 import { callHost } from "@/lib/host";
 import type { LearningRun } from "@/stores/useRenovaStore";
-import { type Artifact, computeDiff, kindAndName } from "./utils";
+import type { DiffsByKind, DiffArtifact, ChangedEntry } from "./utils";
+import { displayNameFor, normalizeForView } from "./utils";
 
 // Lazy Monaco diff (optional)
 let MonacoDiff: React.ComponentType<any> | null = null;
@@ -20,118 +22,113 @@ type Props = {
   selectedRunId: string | null;
 };
 
-function hashOf(v: unknown): string {
-  const s = typeof v === "string" ? v : JSON.stringify(v ?? null);
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
-  return (h >>> 0).toString(36);
-}
+/** Selection model for the right-side diff viewer */
+type Selection =
+  | { kind_id: string; group: "added" | "removed" | "unchanged"; item: DiffArtifact }
+  | { kind_id: string; group: "changed"; item: ChangedEntry };
 
 export default function RunsDiffPanel({ workspaceId, runs, selectedRunId }: Props) {
-  const [leftRunId, setLeftRunId] = useState<string | null>(null);
-  const [rightRunId, setRightRunId] = useState<string | null>(null);
+  const [run, setRun] = useState<LearningRun | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  const [leftArtifacts, setLeftArtifacts] = useState<Record<string, Artifact>>({});
-  const [rightArtifacts, setRightArtifacts] = useState<Record<string, Artifact>>({});
-  const [diffLoading, setDiffLoading] = useState(false);
-  const [diffError, setDiffError] = useState<string | null>(null);
-  const [selectedNk, setSelectedNk] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
 
-  // defaults for sides
-  useEffect(() => {
-    if (!runs || runs.length === 0) return;
-    const right = selectedRunId || runs[0]?.run_id;
-    setRightRunId(right);
-
-    // pick an earlier completed run as left if possible
-    const earlierCompleted = runs
-      .filter((r) => r.status === "completed" && r.run_id !== right)
-      .sort((a, b) => (a.run_summary?.started_at ?? "").localeCompare(b.run_summary?.started_at ?? ""))[0]?.run_id || null;
-
-    setLeftRunId(earlierCompleted);
-  }, [runs, selectedRunId]);
-
-  // load artifacts for each side
-  const loadSide = async (rid: string | null) => {
-    if (!rid) return {} as Record<string, Artifact>;
-    const run = await callHost<LearningRun>({ type: "runs:get", payload: { runId: rid } });
-    const list: Array<any> = Array.isArray((run as any).run_artifacts) ? (run as any).run_artifacts : [];
-    const map: Record<string, Artifact> = {};
-    for (const a of list) {
-      if (!a || !a.kind || !a.name) continue;
-      const nk = (a.natural_key as string) || `${String(a.kind)}:${String(a.name)}`.toLowerCase();
-      map[nk] = {
-        artifact_id: (a as any).artifact_id || "",
-        workspace_id: (a as any).workspace_id || "",
-        kind: a.kind,
-        name: a.name,
-        natural_key: nk,
-        fingerprint: (a as any).fingerprint || hashOf({ kind: a.kind, name: a.name, data: a.data }),
-        data: a.data,
-      };
-    }
-    return map;
-  };
-
+  // Load the full run (so we get diffs_by_kind payload reliably)
   useEffect(() => {
     (async () => {
-      setDiffLoading(true);
-      setDiffError(null);
+      setLoading(true); setErr(null);
       try {
-        const [L, R] = await Promise.all([loadSide(leftRunId), loadSide(rightRunId)]);
-        setLeftArtifacts(L); setRightArtifacts(R); setSelectedNk(null);
+        if (!selectedRunId) { setRun(null); setSelection(null); return; }
+        const full = await callHost<LearningRun>({ type: "runs:get", payload: { runId: selectedRunId } });
+        setRun(full || null);
+        setSelection(null);
       } catch (e: any) {
-        setDiffError(e?.message ?? "Failed to load runs for diff");
+        setErr(e?.message ?? "Failed to load run");
       } finally {
-        setDiffLoading(false);
+        setLoading(false);
       }
     })();
-  }, [leftRunId, rightRunId, workspaceId]);
+  }, [selectedRunId, workspaceId]);
 
-  const derived = useMemo(() => computeDiff(leftArtifacts, rightArtifacts), [leftArtifacts, rightArtifacts]);
-  const leftArt = selectedNk ? leftArtifacts[selectedNk] : undefined;
-  const rightArt = selectedNk ? rightArtifacts[selectedNk] : undefined;
+  const diffsByKind: DiffsByKind = useMemo(() => (run?.diffs_by_kind ?? {}) as DiffsByKind, [run?.diffs_by_kind]);
 
-  const leftJson = useMemo(() => JSON.stringify(leftArt ? { kind: leftArt.kind, name: leftArt.name, fingerprint: leftArt.fingerprint, data: leftArt.data } : {}, null, 2), [leftArt]);
-  const rightJson = useMemo(() => JSON.stringify(rightArt ? { kind: rightArt.kind, name: rightArt.name, fingerprint: rightArt.fingerprint, data: rightArt.data } : {}, null, 2), [rightArt]);
+  const kinds = useMemo(() => Object.keys(diffsByKind).sort(), [diffsByKind]);
+
+  // derive viewer JSON
+  const { leftJson, rightJson } = useMemo(() => {
+    if (!selection) return { leftJson: "{}", rightJson: "{}" };
+
+    const kind_id = selection.kind_id;
+    if (selection.group === "changed") {
+      const before = normalizeForView(kind_id, selection.item.before || null);
+      const after  = normalizeForView(kind_id, selection.item.after  || null);
+      return {
+        leftJson: JSON.stringify(before, null, 2),
+        rightJson: JSON.stringify(after,  null, 2),
+      };
+    }
+
+    if (selection.group === "added") {
+      const after = normalizeForView(kind_id, selection.item);
+      return { leftJson: "{}", rightJson: JSON.stringify(after, null, 2) };
+    }
+
+    if (selection.group === "removed") {
+      const before = normalizeForView(kind_id, selection.item);
+      return { leftJson: JSON.stringify(before, null, 2), rightJson: "{}" };
+    }
+
+    // unchanged: mirror on both sides
+    const both = normalizeForView(kind_id, selection.item);
+    const s = JSON.stringify(both, null, 2);
+    return { leftJson: s, rightJson: s };
+  }, [selection]);
 
   return (
     <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60">
       <div className="border-b border-neutral-800 p-3 md:p-4">
-        <div className="flex flex-col md:flex-row md:items-end gap-3 md:gap-6">
-          <div className="flex-1">
-            <div className="text-xs uppercase tracking-wide text-neutral-400">Left</div>
-            <select className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 p-2 text-sm"
-              value={leftRunId ?? ""} onChange={(e) => setLeftRunId(e.target.value || null)}>
-              <option value="">(none)</option>
-              {runs.map((r) => <option key={r.run_id} value={r.run_id}>{r.title || r.run_id}</option>)}
-            </select>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium text-neutral-200">Run Diffs</div>
+            <div className="text-xs text-neutral-400">{run?.title || selectedRunId || "—"}</div>
           </div>
-          <div className="flex-1">
-            <div className="text-xs uppercase tracking-wide text-neutral-400">Right</div>
-            <select className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 p-2 text-sm"
-              value={rightRunId ?? ""} onChange={(e) => setRightRunId(e.target.value || null)}>
-              <option value="">(none)</option>
-              {runs.map((r) => <option key={r.run_id} value={r.run_id}>{r.title || r.run_id}</option>)}
-            </select>
+          <div className="text-xs text-neutral-400">
+            {loading ? "Loading…" : err ? <span className="text-red-400">{err}</span> : null}
           </div>
-          <div className="grow" />
-          <div className="text-xs text-neutral-400">{diffLoading ? "Computing diff…" : diffError ? <span className="text-red-400">{diffError}</span> : null}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+        {/* LEFT: Kind → Grouped lists */}
         <div className="border-r border-neutral-800 p-3 md:p-4">
-          <div className="text-sm font-medium text-neutral-200 mb-2">Summary</div>
-          <Group title={`New (${derived.counts.new})`} rows={derived.groups.new} onRowClick={setSelectedNk} />
-          <Group title={`Updated (${derived.counts.updated})`} rows={derived.groups.updated} onRowClick={setSelectedNk} defaultOpen />
-          <Group title={`Retired (${derived.counts.retired})`} rows={derived.groups.retired} onRowClick={setSelectedNk} />
-          <Group title={`Unchanged (${derived.counts.unchanged})`} rows={derived.groups.unchanged} onRowClick={setSelectedNk} />
+          {kinds.length === 0 ? (
+            <div className="text-sm text-neutral-400">No diffs available for this run.</div>
+          ) : (
+            kinds.map((kind_id) => {
+              const g = diffsByKind[kind_id] || {};
+              const added = Array.isArray(g.added) ? g.added : [];
+              const changed = Array.isArray(g.changed) ? g.changed : [];
+              const removed = Array.isArray(g.removed) ? g.removed : [];
+              const unchanged = Array.isArray(g.unchanged) ? g.unchanged : [];
+              return (
+                <KindGroup
+                  key={kind_id}
+                  kind_id={kind_id}
+                  counts={{ added: added.length, changed: changed.length, removed: removed.length, unchanged: unchanged.length }}
+                  groups={{ added, changed, removed, unchanged }}
+                  onSelect={setSelection}
+                />
+              );
+            })
+          )}
         </div>
+
+        {/* RIGHT: JSON Diff Viewer */}
         <div className="p-3 md:p-4 min-w-0">
           <div className="text-sm font-medium text-neutral-200">Details</div>
-          {!selectedNk ? (
-            <div className="mt-3 text-sm text-neutral-400">Select an item to view JSON diff.</div>
+          {!selection ? (
+            <div className="mt-3 text-sm text-neutral-400">Select an item to view the JSON diff.</div>
           ) : MonacoDiff ? (
             <div className="mt-3 rounded-lg border border-neutral-800 overflow-hidden">
               {/* @ts-ignore */}
@@ -162,25 +159,101 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId }: Prop
   );
 }
 
-function Group({ title, rows, onRowClick, defaultOpen = false }: { title: string; rows: string[]; onRowClick: (nk: string) => void; defaultOpen?: boolean; }) {
+function KindGroup({
+  kind_id,
+  counts,
+  groups,
+  onSelect,
+}: {
+  kind_id: string;
+  counts: { added: number; changed: number; removed: number; unchanged: number };
+  groups: {
+    added: DiffArtifact[];
+    changed: ChangedEntry[];
+    removed: DiffArtifact[];
+    unchanged: DiffArtifact[];
+  };
+  onSelect: (s: Selection) => void;
+}) {
   return (
-    <details className="rounded-md border border-neutral-800 bg-neutral-900/50 mb-2" open={defaultOpen}>
-      <summary className="cursor-pointer select-none px-3 py-2 text-sm text-neutral-200">{title}</summary>
+    <details className="rounded-md border border-neutral-800 bg-neutral-900/50 mb-2" open>
+      <summary className="cursor-pointer select-none px-3 py-2 text-sm text-neutral-200 flex items-center justify-between">
+        <span className="truncate">{kind_id}</span>
+        <span className="text-[11px] text-neutral-400 ml-2">
+          +{counts.added} · ~{counts.changed} · −{counts.removed} · ={counts.unchanged}
+        </span>
+      </summary>
+
+      <div className="px-2 py-2">
+        <MiniGroup
+          title={`Added (${counts.added})`}
+          emptyLabel="—"
+          rows={groups.added}
+          render={(it) => displayNameFor(kind_id, it)}
+          onClick={(it) => onSelect({ kind_id, group: "added", item: it })}
+        />
+
+        <MiniGroup
+          title={`Changed (${counts.changed})`}
+          emptyLabel="—"
+          rows={groups.changed}
+          render={(pair) => {
+            const name = displayNameFor(kind_id, pair.after || pair.before);
+            return name || "(changed)";
+          }}
+          onClick={(pair) => onSelect({ kind_id, group: "changed", item: pair })}
+        />
+
+        <MiniGroup
+          title={`Removed (${counts.removed})`}
+          emptyLabel="—"
+          rows={groups.removed}
+          render={(it) => displayNameFor(kind_id, it)}
+          onClick={(it) => onSelect({ kind_id, group: "removed", item: it })}
+        />
+
+        <MiniGroup
+          title={`Unchanged (${counts.unchanged})`}
+          emptyLabel="—"
+          rows={groups.unchanged}
+          render={(it) => displayNameFor(kind_id, it)}
+          onClick={(it) => onSelect({ kind_id, group: "unchanged", item: it })}
+        />
+      </div>
+    </details>
+  );
+}
+
+function MiniGroup<T>({
+  title,
+  emptyLabel,
+  rows,
+  render,
+  onClick,
+}: {
+  title: string;
+  emptyLabel: string;
+  rows: T[];
+  render: (row: T) => string;
+  onClick: (row: T) => void;
+}) {
+  return (
+    <details className="rounded border border-neutral-800 bg-neutral-900/40 mb-2">
+      <summary className="cursor-pointer select-none px-3 py-1.5 text-[13px] text-neutral-200">{title}</summary>
       <ul className="px-2 py-1">
         {rows.length === 0 ? (
-          <li className="px-2 py-1 text-xs text-neutral-500">—</li>
+          <li className="px-2 py-1 text-xs text-neutral-500">{emptyLabel}</li>
         ) : (
-          rows.map((nk) => {
-            const { kind, name } = kindAndName(nk);
-            return (
-              <li key={nk} onClick={() => onRowClick(nk)}
-                className="px-2 py-1 text-sm hover:bg-neutral-800/70 rounded cursor-pointer flex items-center gap-2"
-                title={nk}>
-                <span className="rounded border border-neutral-700 bg-neutral-800/60 px-1.5 py-0.5 text-[11px] text-neutral-300">{kind}</span>
-                <span className="truncate">{name || nk}</span>
-              </li>
-            );
-          })
+          rows.map((row, i) => (
+            <li
+              key={i}
+              onClick={() => onClick(row)}
+              className="px-2 py-1 text-sm hover:bg-neutral-800/70 rounded cursor-pointer truncate"
+              title={render(row)}
+            >
+              {render(row)}
+            </li>
+          ))
         )}
       </ul>
     </details>

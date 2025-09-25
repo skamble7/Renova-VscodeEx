@@ -58,6 +58,20 @@ export type StepEvent = {
 
 export type RunStatus = "created" | "pending" | "running" | "completed" | "failed" | "canceled";
 
+/** New: shapes for diffs-by-kind kept generic */
+export type DiffArtifact = {
+  kind_id: string;
+  schema_version?: string | number;
+  identity?: any;
+  data?: any;
+  provenance?: any;
+};
+export type ChangedEntry = { before?: DiffArtifact | null; after?: DiffArtifact | null };
+export type DiffsByKind = Record<
+  string,
+  { added?: DiffArtifact[]; removed?: DiffArtifact[]; changed?: ChangedEntry[]; unchanged?: DiffArtifact[] }
+>;
+
 export type LearningRun = {
   run_id: string;
   workspace_id: string;
@@ -83,10 +97,11 @@ export type LearningRun = {
     [k: string]: any;
   };
 
-  // run artifacts + diffs (+ counts if present)
+  // run artifacts + diffs
   run_artifacts?: any[];
-  artifacts_diff?: { new: string[]; updated: string[]; unchanged: string[]; retired: string[] };
-  deltas?: { counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>> };
+  artifacts_diff?: { new: string[]; updated: string[]; unchanged: string[]; retired: string[] }; // legacy
+  deltas?: { counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>> }; // legacy
+  diffs_by_kind?: DiffsByKind; // NEW
 
   // summary / error
   run_summary?: { started_at?: string; completed_at?: string; duration_s?: any; logs?: string[] } | null;
@@ -191,7 +206,6 @@ async function fetchPackForRun(run: any): Promise<{ capabilities?: any[]; playbo
   const { pack_id, key, version } = derivePackHint(run);
   if (!(pack_id || (key && version))) return null;
   try {
-    // Prefer resolved; host will fall back automatically.
     return await callHost<{ capabilities?: any[]; playbooks?: any[] }>({
       type: "capability:pack:get",
       payload: { pack_id, key, version, resolved: true } as any,
@@ -240,7 +254,6 @@ export const useRenovaStore = create<State>((set, get) => ({
   capabilityDefaults: {},
   setCapabilityDefaults: (d) => set((s) => ({ capabilityDefaults: { ...s.capabilityDefaults, ...d } })),
   deriveCapabilityDefaults() {
-    // learn defaults from any run options we already have
     for (const r of get().runs) {
       const pk = r.options?.pack_key;
       const pv = r.options?.pack_version;
@@ -346,13 +359,11 @@ export const useRenovaStore = create<State>((set, get) => ({
     } as any);
     set({ runs: runs ?? [] });
 
-    // clear selection if needed
     const sel = get().selectedRunId;
     if (sel && !(runs ?? []).some((r) => r.run_id === sel)) {
       set({ selectedRunId: undefined });
     }
 
-    // learn defaults
     get().deriveCapabilityDefaults();
   },
 
@@ -369,7 +380,6 @@ export const useRenovaStore = create<State>((set, get) => ({
         step_events: prev.step_events ?? [],
         live_steps: { ...(prev.live_steps ?? {}) },
       };
-      // if run is completed and all known steps are still pending (no events), mark as completed
       if (next.status === "completed" && next.live_steps && Object.keys(next.live_steps).length > 0) {
         const vals = Object.values(next.live_steps);
         const allPending = vals.every((e: any) => (e?.status ?? "pending") === "pending");
@@ -379,14 +389,12 @@ export const useRenovaStore = create<State>((set, get) => ({
           }
         }
       }
-      // seed steps if none exist yet
       if (!next.live_steps || Object.keys(next.live_steps).length === 0) {
         try {
           const packDoc = await fetchPackForRun(next);
           if (packDoc && next.playbook_id) {
             const metas = buildStepMetasForPlaybook(packDoc, next.playbook_id);
             if (metas.length) {
-              // use existing action to seed (will also mark completed if needed later)
               get().seedLiveSteps(next.run_id, metas, { markDoneIfRunCompleted: next.status === "completed" });
             }
           }
@@ -398,7 +406,6 @@ export const useRenovaStore = create<State>((set, get) => ({
     }
     set({ runs: arr });
 
-    // update defaults from this run
     const model = full?.options?.model;
     if (model && !get().capabilityDefaults.model) get().setCapabilityDefaults({ model });
     const pk = full?.options?.pack_key;
