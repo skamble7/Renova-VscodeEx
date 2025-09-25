@@ -34,9 +34,13 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
   };
 }
 
-const API_BASE = "http://127.0.0.1:8010";        // workspace-service
-const ARTIFACT_BASE = "http://localhost:9011";   // artifact-service (registry + artifacts)
-const LEARNING_BASE = "http://localhost:9013";   // learning-service
+/** Service bases (readable names) */
+const WORKSPACE_BASE   = "http://127.0.0.1:8010"; // workspace-service
+const ARTIFACT_BASE    = "http://localhost:9011"; // artifact-service (registry + artifacts)
+const LEARNING_BASE    = "http://localhost:9013"; // learning-service
+const CAPABILITY_BASE  = "http://localhost:9012"; // capability-service  (packs)
+
+/* ---------------------------------- utils --------------------------------- */
 
 type Json = any;
 
@@ -59,10 +63,12 @@ function getEtag(h: Headers) {
   return h.get("ETag") ?? h.get("etag") ?? undefined;
 }
 
+/* --------------------------------- service -------------------------------- */
+
 export const RenovaWorkspaceService = {
   // ---- Workspaces (list/create/get/update) ----
   async list(): Promise<BackendWorkspace[]> {
-    const res = await fetch(`${API_BASE}/workspace/`);
+    const res = await fetch(`${WORKSPACE_BASE}/workspace/`);
     if (!res.ok) throw new Error(`Failed to list workspaces (${res.status})`);
     const data = (await json<RawWorkspace[]>(res)) ?? [];
     if (!Array.isArray(data)) throw new Error("Expected array of workspaces");
@@ -70,7 +76,7 @@ export const RenovaWorkspaceService = {
   },
 
   async create(payload: { name: string; description?: string; created_by?: string }) {
-    const res = await fetch(`${API_BASE}/workspace/`, {
+    const res = await fetch(`${WORKSPACE_BASE}/workspace/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -81,14 +87,14 @@ export const RenovaWorkspaceService = {
   },
 
   async get(id: string) {
-    const res = await fetch(`${API_BASE}/workspace/${id}`);
+    const res = await fetch(`${WORKSPACE_BASE}/workspace/${id}`);
     if (!res.ok) throw new Error(`Failed to get workspace (${res.status})`);
     const data = await json<RawWorkspace>(res);
     return normalizeWorkspace(data);
   },
 
   async update(id: string, patch: { name?: string; description?: string }) {
-    const res = await fetch(`${API_BASE}/workspace/${id}`, {
+    const res = await fetch(`${WORKSPACE_BASE}/workspace/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -127,7 +133,7 @@ export const RenovaWorkspaceService = {
     return await json(res);
   },
 
-  // ---- Registry (kinds) ----
+  // ---- Registry (kinds from artifact service) ----
   async registryKindsList(limit = 200, offset = 0) {
     const res = await fetch(`${ARTIFACT_BASE}/registry/kinds${qs({ limit, offset })}`);
     if (!res.ok) throw new Error(`Failed to fetch kinds list (${res.status})`);
@@ -142,7 +148,6 @@ export const RenovaWorkspaceService = {
 
   // ---- Learning Runs ----
   async startLearning(requestBody: any) {
-    // Ensure workspace_id is present
     if (!requestBody?.workspace_id) throw new Error("workspace_id is required");
     const res = await fetch(`${LEARNING_BASE}/runs`, {
       method: "POST",
@@ -162,7 +167,7 @@ export const RenovaWorkspaceService = {
     })}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to list runs (${res.status})`);
-    return await json(res); // expect array
+    return await json(res);
   },
 
   async getRun(runId: string) {
@@ -175,5 +180,55 @@ export const RenovaWorkspaceService = {
     const res = await fetch(`${LEARNING_BASE}/runs/${encodeURIComponent(runId)}`, { method: "DELETE" });
     if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete run (${res.status})`);
   },
-  
+
+  /* ======================= Capability Service (packs) ======================= */
+
+  /** List capability packs (supports key/version/status/q filters). */
+  async capabilityPacksList(opts?: {
+    key?: string;
+    version?: string;
+    status?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const res = await fetch(
+      `${CAPABILITY_BASE}/capability/packs${qs({
+        key: opts?.key,
+        version: opts?.version,
+        status: opts?.status,
+        q: opts?.q,
+        limit: opts?.limit,
+        offset: opts?.offset,
+      })}`
+    );
+    if (!res.ok) throw new Error(`Failed to list capability packs (${res.status})`);
+    return await json(res);
+  },
+
+  /** Get a pack by pack_id (e.g. "cobol-mainframe@v1.0.2"). */
+  async capabilityPackGetById(pack_id: string) {
+    if (!pack_id) throw new Error("pack_id is required");
+    const res = await fetch(`${CAPABILITY_BASE}/capability/packs/${encodeURIComponent(pack_id)}`);
+    if (!res.ok) throw new Error(`Failed to fetch capability pack (${res.status})`);
+    return await json(res);
+  },
+
+  /** Convenience: fetch by key+version using the canonical pack_id form. */
+  async capabilityPackGetByKeyVersion(key: string, version: string) {
+    if (!key || !version) throw new Error("key and version are required");
+    return this.capabilityPackGetById(`${key}@${version}`);
+  },
+
+  /**
+   * Get the resolved view for a pack (capabilities + playbooks resolved through
+   * inheritance/refs). If not available, call the non-resolved endpoint instead.
+   */
+  async capabilityPackResolved(pack_id: string) {
+    if (!pack_id) throw new Error("pack_id is required");
+    const url = `${CAPABILITY_BASE}/capability/packs/${encodeURIComponent(pack_id)}/resolved`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch resolved capability pack (${res.status})`);
+    return await json(res);
+  },
 };

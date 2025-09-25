@@ -6,11 +6,12 @@ import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import RunListItem from "./RunListItem";
 import RunsDiffPanel from "./RunsDiffPanel";
+import StepTracker from "./StepTracker";
 
 type Props = { workspaceId: string };
 
 export default function RunsTab({ workspaceId }: Props) {
-  const { runs, loadRuns, deleteRun, refreshRun, startRun, selectedRunId, selectRun } = useRenovaStore();
+  const { runs, loadRuns, deleteRun, refreshRun, startRun, selectedRunId, selectRun, applyStepEvent } = useRenovaStore();
 
   const [q, setQ] = useState("");
   const [showStart, setShowStart] = useState(false);
@@ -20,7 +21,11 @@ export default function RunsTab({ workspaceId }: Props) {
     JSON.stringify(
       {
         playbook_id: "pb.micro.plus",
-        inputs: { avc: { vision: [], problem_statements: [], goals: [] }, fss: { stories: [] }, pss: { paradigm: "", style: [], tech_stack: [] } },
+        inputs: {
+          avc: { vision: [], problem_statements: [], goals: [] },
+          fss: { stories: [] },
+          pss: { paradigm: "", style: [], tech_stack: [] },
+        },
         options: { model: "openai:gpt-4o-mini", dry_run: false },
         title: "New learning run",
         description: "Triggered from Renova",
@@ -35,6 +40,38 @@ export default function RunsTab({ workspaceId }: Props) {
   useEffect(() => {
     if (!selectedRunId && runs.length > 0) selectRun(runs[0].run_id);
   }, [runs, selectedRunId, selectRun]);
+
+  // Sync with notifications: refresh runs on lifecycle and pipe step events into store
+  useEffect(() => {
+    const onMsg = (e: MessageEvent<any>) => {
+      const { type, payload } = e.data ?? {};
+      if (!payload) return;
+
+      if (type === "runs:step") {
+        // payload is evt.data already; store handles shapes
+        applyStepEvent(payload);
+        return;
+      }
+
+      if (type === "runs:event") {
+        const rid: string | undefined = payload?.data?.run_id || payload?.run_id;
+        const ev: string | undefined = payload?.data?.event || payload?.event || payload?.type;
+        if (!rid || !ev) return;
+
+        if (
+          ev === "learning.run.started" ||
+          ev === "learning.run.completed" ||
+          ev === "learning.run.completed.interim" ||
+          ev === "learning.run.failed"
+        ) {
+          refreshRun(rid);
+        }
+      }
+    };
+
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [applyStepEvent, refreshRun]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -72,8 +109,11 @@ export default function RunsTab({ workspaceId }: Props) {
                   <p className="mt-2 text-sm text-neutral-400">
                     This JSON is sent to the learning service (<code className="font-mono">workspace_id</code> will be filled in automatically).
                   </p>
-                  <textarea className="mt-2 w-full min-h-40 rounded-md border border-neutral-700 bg-neutral-900 p-2 font-mono text-sm"
-                    value={startJson} onChange={(e) => setStartJson(e.target.value)} />
+                  <textarea
+                    className="mt-2 w-full min-h-40 rounded-md border border-neutral-700 bg-neutral-900 p-2 font-mono text-sm"
+                    value={startJson}
+                    onChange={(e) => setStartJson(e.target.value)}
+                  />
                   <div className="mt-2 flex gap-2">
                     <Button
                       onClick={async () => {
@@ -99,7 +139,9 @@ export default function RunsTab({ workspaceId }: Props) {
 
               <div className="overflow-auto pb-3">
                 {filtered.length === 0 ? (
-                  <div className="px-3 py-6 text-neutral-400 text-sm">{q ? "No runs match your search." : "No runs yet. Start one to see it here."}</div>
+                  <div className="px-3 py-6 text-neutral-400 text-sm">
+                    {q ? "No runs match your search." : "No runs yet. Start one to see it here."}
+                  </div>
                 ) : (
                   <ul className="px-2">
                     {filtered.map((r) => (
@@ -107,7 +149,7 @@ export default function RunsTab({ workspaceId }: Props) {
                         key={r.run_id}
                         run={r}
                         selected={r.run_id === selectedRunId}
-                        onSelect={(id) => selectRun(id)}
+                        onSelect={(id) => { selectRun(id); refreshRun(id); }}
                         onRefresh={refreshRun}
                         onDelete={deleteRun}
                       />
@@ -119,16 +161,23 @@ export default function RunsTab({ workspaceId }: Props) {
           )}
         </div>
 
-        {/* RIGHT: diff panel */}
+        {/* RIGHT: step tracker + diff panel */}
         <div className={`relative min-w-0 overflow-auto p-4 ${collapsed ? "pl-12" : ""}`}>
           {collapsed && (
             <div className="absolute left-2 top-2 z-10">
-              <Button variant="ghost" size="icon" onClick={() => setCollapsed(false)} title="Expand runs"
-                className="rounded-full border border-neutral-700 bg-neutral-900/70 hover:bg-neutral-900">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setCollapsed(false)}
+                title="Expand runs"
+                className="rounded-full border border-neutral-700 bg-neutral-900/70 hover:bg-neutral-900"
+              >
                 <ChevronRight size={18} />
               </Button>
             </div>
           )}
+
+          <StepTracker runId={selectedRunId ?? null} className="mb-4" />
 
           <RunsDiffPanel workspaceId={workspaceId} runs={runs} selectedRunId={selectedRunId ?? null} />
         </div>

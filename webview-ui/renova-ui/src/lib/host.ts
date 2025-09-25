@@ -33,12 +33,14 @@ export type HostReq =
   // registry
   | { type: "registry:kinds:list"; payload?: { limit?: number; offset?: number } }
   | { type: "registry:kind:get"; payload: { key: string } }
-  // learning run
-  | { type: "runs:start"; payload: { requestBody: any } }
+  // learning runs
   | { type: "runs:start"; payload: { requestBody: any } }
   | { type: "runs:list";  payload: { workspaceId: string; limit?: number; offset?: number } }
   | { type: "runs:get";   payload: { runId: string } }
-  | { type: "runs:delete";payload: { runId: string } };
+  | { type: "capability:pack:get"; payload: { pack_id?: string; key?: string; version?: string; resolved?: boolean } }
+  | { type: "runs:delete";payload: { runId: string } }
+  // capability service (NEW)
+  | { type: "capability:pack:resolvedByKeyVersion"; payload: { key: string; version: string } };
 
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");

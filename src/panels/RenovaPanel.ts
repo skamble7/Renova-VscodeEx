@@ -138,7 +138,89 @@ export class RenovaPanel {
             break;
           }
 
+          // ---- Capability service bridge (packs) ----
+          case "capability:pack:resolvedByKeyVersion": {
+            const { key, version } = (payload ?? {}) as { key?: string; version?: string };
+            if (!key || !version) {
+              reply(false, undefined, "key and version are required");
+              break;
+            }
+
+            // Prefer direct pack_id form (e.g. "cobol-mainframe@v1.0.2")
+            const packId = `${key}@${version}`;
+
+            // 1) Try /resolved on the direct id
+            try {
+              const resolved = await RenovaWorkspaceService.capabilityPackResolved(packId);
+              // basic sanity: ensure playbooks/capabilities exist
+              if (resolved && (resolved.playbooks || resolved.capabilities)) {
+                reply(true, resolved);
+                break;
+              }
+            } catch {
+              /* fall through to non-resolved */
+            }
+
+            // 2) Fallback: non-resolved pack by id (already contains playbooks/capabilities in your service)
+            try {
+              const basic = await RenovaWorkspaceService.capabilityPackGetById(packId);
+              if (basic && (basic.playbooks || basic.capabilities)) {
+                reply(true, basic);
+                break;
+              }
+            } catch {
+              /* fall through to list */
+            }
+
+            // 3) Last resort: list with filters and resolve whichever id field is present
+            try {
+              const list = await RenovaWorkspaceService.capabilityPacksList({ key, version, limit: 1, offset: 0 });
+              const first = Array.isArray(list) && list.length ? list[0] : null;
+              const altId: string | undefined = first?.id ?? first?._id;
+              if (!altId) throw new Error("Pack not found via list()");
+              try {
+                const resolved = await RenovaWorkspaceService.capabilityPackResolved(altId);
+                reply(true, resolved);
+              } catch {
+                const basic = await RenovaWorkspaceService.capabilityPackGetById(altId);
+                reply(true, basic);
+              }
+            } catch (e: any) {
+              reply(false, undefined, e?.message ?? "Failed to load capability pack");
+            }
+            break;
+          }
+
+          case "capability:pack:get": {
+            const { pack_id, key, version, resolved = true } = (payload ?? {}) as {
+              pack_id?: string; key?: string; version?: string; resolved?: boolean;
+            };
+
+            if (!pack_id && !(key && version)) {
+              reply(false, undefined, "capability:pack:get requires pack_id or key+version");
+              break;
+            }
+
+            const id = pack_id ?? `${key}@${version}`;
+
+            try {
+              if (resolved) {
+                try {
+                  const data = await RenovaWorkspaceService.capabilityPackResolved(id);
+                  reply(true, data);
+                  break;
+                } catch {/* fall back */ }
+              }
+              const basic = await RenovaWorkspaceService.capabilityPackGetById(id);
+              reply(true, basic);
+            } catch (e: any) {
+              reply(false, undefined, e?.message ?? "Failed to fetch capability pack");
+            }
+            break;
+          }
+
           case "hello": { reply(true, { ok: true }); break; }
+
           default:
             reply(false, undefined, `Unhandled message type: ${type}`);
         }
