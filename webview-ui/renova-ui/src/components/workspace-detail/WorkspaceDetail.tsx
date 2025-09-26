@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // webview-ui/renova-ui/src/components/workspace-detail/WorkspaceDetail.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRenovaStore } from "@/stores/useRenovaStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ArtifactView from "./ArtifactView";
 import StartLearningDrawer from "./forms/StartLearningDrawer";
 import { Search } from "lucide-react";
-
-// Runs tab (ported from RainaV2)
+import ViewToggle from "@/components/workspace/ViewToggle";
 import RunsTab from "@/components/runs/RunsTab";
 
 type TabKey = "overview" | "artifacts" | "conversations" | "runs" | "timeline";
@@ -40,6 +39,32 @@ export default function WorkspaceDetail({
   const [learnOpen, setLearnOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>("artifacts");
 
+  // Default artifacts view = "list", persisted like WorkspaceLanding's toggle.
+  const [viewHydrated, setViewHydrated] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("renova:artifacts:view");
+      const preferred =
+        saved === "list" || saved === "list" ? (saved as "grid" | "list") : "list";
+      if (view !== preferred) setView(preferred);
+    } catch {
+      if (view !== "list") setView("list");
+    } finally {
+      setViewHydrated(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!viewHydrated) return;
+    try {
+      localStorage.setItem("renova:artifacts:view", view);
+    } catch {
+      /* ignore */
+    }
+  }, [view, viewHydrated]);
+
+  const effectiveView = viewHydrated ? view : "list";
+
   useEffect(() => {
     switchWorkspace(workspaceId);
   }, [workspaceId, switchWorkspace]);
@@ -48,7 +73,7 @@ export default function WorkspaceDetail({
   const c = counts();
 
   const colsClass =
-    view === "grid"
+    effectiveView === "grid"
       ? "lg:[grid-template-columns:minmax(0,1fr)_520px]"
       : "lg:[grid-template-columns:420px_minmax(0,1fr)]";
 
@@ -58,13 +83,15 @@ export default function WorkspaceDetail({
       <div className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur shrink-0">
         <div className="relative max-w-[1400px] mx-auto px-4 py-1.5 flex items-center">
           <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" onClick={onBack}>← Back</Button>
+            <Button variant="ghost" onClick={onBack}>
+              ← Back
+            </Button>
             <div className="text-2xl font-semibold truncate max-w-[40vw]">
               {loading ? "Loading…" : wsDoc?.workspace?.name ?? "Workspace"}
             </div>
           </div>
 
-          {/* Tabs — headers only for now (Overview / Artifacts / Conversations / Runs / Timeline) */}
+          {/* Tabs */}
           <div className="absolute left-1/2 -translate-x-1/2">
             <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
               <TabsList className="mx-auto">
@@ -107,22 +134,8 @@ export default function WorkspaceDetail({
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
-              <div className="flex border border-neutral-800 rounded-md overflow-hidden">
-                <Button
-                  variant={view === "grid" ? "default" : "ghost"}
-                  className="rounded-none"
-                  onClick={() => setView("grid")}
-                >
-                  Grid
-                </Button>
-                <Button
-                  variant={view === "list" ? "default" : "ghost"}
-                  className="rounded-none"
-                  onClick={() => setView("list")}
-                >
-                  List
-                </Button>
-              </div>
+              {/* Use the same ViewToggle component/look as WorkspaceLanding */}
+              <ViewToggle view={effectiveView} onChange={setView} />
             </div>
           </div>
         )}
@@ -131,12 +144,10 @@ export default function WorkspaceDetail({
       {/* Body */}
       <div className="flex-1 overflow-hidden min-h-0">
         {tab === "runs" ? (
-          // RUNS TAB: full-width content handled by RunsTab
           <div className="flex-1 min-h-0">
             <RunsTab workspaceId={workspaceId} />
           </div>
         ) : tab === "artifacts" ? (
-          // ARTIFACTS TAB: two-column layout
           <div
             className={[
               "max-w-[1400px] mx-auto w-full h-full px-4 py-4 grid grid-cols-1 gap-4 min-h-0",
@@ -151,7 +162,7 @@ export default function WorkspaceDetail({
                 <div className="text-neutral-400 text-sm">
                   No artifacts yet. Start a learning run to generate insights.
                 </div>
-              ) : view === "grid" ? (
+              ) : effectiveView === "grid" ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
                   {list.map((a) => {
                     const isSelected = selectedArtifactId === a.artifact_id;
@@ -238,7 +249,6 @@ export default function WorkspaceDetail({
             </div>
           </div>
         ) : (
-          // Placeholder panels for tabs not yet implemented
           <div className="max-w-[1400px] mx-auto w-full h-full px-4 py-4">
             <div className="h-full rounded-2xl border border-neutral-800 bg-neutral-900/50 flex items-center justify-center">
               <div className="text-sm text-neutral-400">

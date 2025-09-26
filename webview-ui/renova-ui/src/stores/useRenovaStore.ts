@@ -238,6 +238,15 @@ function normalizeDuration(v: any): number | undefined {
   return undefined;
 }
 
+function getInitialArtifactsView(): "grid" | "list" {
+  try {
+    const v = localStorage.getItem("renova:artifacts:view");
+    return v === "grid" || v === "list" ? (v as "grid" | "list") : "list";
+  } catch {
+    return "list";
+  }
+}
+
 /* ---------------------- Implementation ---------------------- */
 
 export const useRenovaStore = create<State>((set, get) => ({
@@ -246,7 +255,8 @@ export const useRenovaStore = create<State>((set, get) => ({
   etags: {},
   kindIndex: {},
   q: "",
-  view: "grid",
+  // Default to LIST and persist via localStorage
+  view: getInitialArtifactsView(),
 
   runs: [],
   selectedRunId: undefined,
@@ -269,7 +279,11 @@ export const useRenovaStore = create<State>((set, get) => ({
   },
 
   setQuery: (q) => set({ q }),
-  setView: (v) => set({ view: v }),
+  setView: (v) =>
+    set(() => {
+      try { localStorage.setItem("renova:artifacts:view", v); } catch { /* ignore */ }
+      return { view: v };
+    }),
 
   async getKindSchema(key: string) {
     if (!key) return undefined;
