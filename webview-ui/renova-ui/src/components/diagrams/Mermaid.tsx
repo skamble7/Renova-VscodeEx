@@ -18,7 +18,7 @@ export default function Mermaid({
   maxWidth = "100%",
   className,
   config,
-  /** NEW: scale factor for zoom (1 = 100%) */
+  /** scale factor for zoom (1 = 100%) */
   scale = 1,
 }: {
   code: string;

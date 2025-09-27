@@ -40,7 +40,6 @@ export default function ArtifactDiagrams({
   if (all.length === 0) {
     return <div className="text-sm text-neutral-400">No diagrams for this artifact yet.</div>;
   }
-
   if (mermaidDiagrams.length === 0) {
     return (
       <div className="text-sm text-neutral-400">
@@ -58,7 +57,6 @@ export default function ArtifactDiagrams({
   }
   const views = Array.from(byView.keys());
 
-  // Ensure activeView is valid even if list changed
   if (!views.includes(activeView) && views.length) {
     setActiveView(views[0]);
   }
@@ -66,51 +64,56 @@ export default function ArtifactDiagrams({
   const arr = byView.get(activeView) ?? [];
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="text-xs uppercase tracking-wide text-neutral-400">
-          Diagrams ({mermaidDiagrams.length})
+    <div className="flex flex-col gap-2 h-full">
+      {/* Compact header: badges + toolbar in one row */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 flex-wrap">
+          {views.map((v) => {
+            const active = v === activeView;
+            return (
+              <button
+                key={v}
+                onClick={() => setActiveView(v)}
+                className="focus:outline-none"
+                title={`Show ${v} diagram`}
+              >
+                <Badge
+                  variant={active ? "default" : "outline"}
+                  className="cursor-pointer capitalize h-6 px-2"
+                >
+                  {v}
+                </Badge>
+              </button>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-1">
-          <Button size="icon" variant="outline" onClick={() => zoom("out")} title="Zoom out (−)">
+
+        <div className="flex items-center gap-1 shrink-0">
+          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => zoom("out")} title="Zoom out">
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <div className="px-2 text-xs tabular-nums w-[52px] text-center">{Math.round(scale * 100)}%</div>
-          <Button size="icon" variant="outline" onClick={() => zoom("in")} title="Zoom in (+)">
+          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => zoom("in")} title="Zoom in">
             <ZoomIn className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="outline" onClick={() => zoom("reset")} title="Reset zoom">
+          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => zoom("reset")} title="Reset zoom">
             <RefreshCw className="h-4 w-4" />
           </Button>
           {onRefresh && (
-            <Button size="sm" variant="outline" className="ml-2" onClick={onRefresh}>
-              Refresh
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-7 w-7"
+              onClick={onRefresh}
+              title="Reload diagrams"
+            >
+              <RefreshCw className="h-4 w-4 rotate-0" />
             </Button>
           )}
         </div>
       </div>
 
-      {/* View badges (compact) */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {views.map((v) => {
-          const active = v === activeView;
-          return (
-            <button
-              key={v}
-              onClick={() => setActiveView(v)}
-              className="focus:outline-none"
-            >
-              <Badge variant={active ? "default" : "outline"} className="cursor-pointer capitalize">
-                {v}
-              </Badge>
-            </button>
-          );
-        })}
-      </div>
-
       {/* Content */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {arr.map((d, i) => {
           const id = keyOf(d, i);
           const hints = d.renderer_hints ?? {};
@@ -119,9 +122,9 @@ export default function ArtifactDiagrams({
           return (
             <div
               key={id}
-              className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3 overflow-auto"
+              className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-2 overflow-auto"
             >
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500 mb-2">
+              <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-1">
                 {d.view ?? "diagram"} • {d.language}
               </div>
               <Mermaid

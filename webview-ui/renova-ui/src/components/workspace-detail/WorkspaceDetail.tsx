@@ -155,7 +155,7 @@ export default function WorkspaceDetail({
             ].join(" ")}
           >
             {/* Left column: artifacts */}
-            <div className="h-full overflow-auto pr-2 min-h-0">
+            <div className="h-full overflow-y-auto pr-2 min-h-0">
               {loading && list.length === 0 ? (
                 <div className="text-neutral-400 text-sm">Loading artifacts…</div>
               ) : list.length === 0 ? (

@@ -18,7 +18,6 @@ const HIDDEN_KEYS = new Set([
   "diagram_fingerprint",
   "etag",
   "generated_from_fingerprint",
-  // add more as needed
 ]);
 
 function shouldHideKey(k: string) {
