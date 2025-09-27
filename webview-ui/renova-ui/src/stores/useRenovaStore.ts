@@ -4,13 +4,32 @@
 import { create } from "zustand";
 import { callHost } from "@/lib/host";
 
+
+
 /* ---------------------- Artifact & Workspace Types ---------------------- */
+
+export type DiagramInstance = {
+  recipe_id?: string | null;
+  view?: string | null;                 // "sequence" | "flowchart" | "mindmap" | ...
+  language: "mermaid" | string;         // we render "mermaid" here; others can be added later
+  instructions: string;                 // actual diagram text
+  renderer_hints?: Record<string, any> | null; // e.g., { wrap: true, direction: "TD" }
+  generated_from_fingerprint?: string | null;
+  prompt_rev?: number | null;
+  provenance?: any;
+  created_at?: string;
+  updated_at?: string;
+};
 
 export type Artifact = {
   artifact_id: string;
   kind: string;
   name: string;
   data: any;
+  /** NEW: diagrams live alongside data */
+  diagrams?: DiagramInstance[];
+  /** NEW: diagrams-only fingerprint (if backend provides it) */
+  diagram_fingerprint?: string | null;
   version?: number | { $numberInt: string };
   provenance?: any;
 };

@@ -2,9 +2,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRenovaStore } from "@/stores/useRenovaStore";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ArtifactDiagrams from "./ArtifactDiagrams";
 
 /**
- * Minimal artifact viewer with schema-aware fallback (like Raina).
+ * Artifact viewer: now has Data + Diagrams tabs.
  */
 export default function ArtifactView() {
   const { artifacts, selectedArtifactId, getKindSchema, refreshArtifact, wsDoc } = useRenovaStore();
@@ -14,6 +16,7 @@ export default function ArtifactView() {
   );
 
   const [schema, setSchema] = useState<any | null>(null);
+  const [tab, setTab] = useState<"data" | "diagrams">("data");
 
   useEffect(() => {
     let cancelled = false;
@@ -31,14 +34,28 @@ export default function ArtifactView() {
     return () => { cancelled = true; };
   }, [artifact?.kind, getKindSchema]);
 
+  useEffect(() => {
+    // If diagrams exist, remember last chosen tab per artifact; default to "diagrams" when present?
+    if (!artifact) return;
+    const key = `renova:artifact:${artifact.artifact_id}:tab`;
+    const saved = localStorage.getItem(key) as "data" | "diagrams" | null;
+    if (saved) setTab(saved);
+    else if (Array.isArray(artifact.diagrams) && artifact.diagrams.length > 0) setTab("diagrams");
+    else setTab("data");
+  }, [artifact?.artifact_id]);
+
+  useEffect(() => {
+    if (!artifact) return;
+    const key = `renova:artifact:${artifact.artifact_id}:tab`;
+    try { localStorage.setItem(key, tab); } catch { /* ignore */ }
+  }, [artifact?.artifact_id, tab]);
+
   if (!artifact) {
     return <div className="p-4 text-sm text-neutral-400">Select an artifact to view.</div>;
   }
 
-  const handleRefresh = () => {
-    if (!artifact) return;
-    return refreshArtifact(artifact.artifact_id);
-  };
+  const handleRefresh = () => refreshArtifact(artifact.artifact_id);
+  const hasDiagrams = Array.isArray(artifact.diagrams) && artifact.diagrams.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -55,11 +72,32 @@ export default function ArtifactView() {
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        <SchemaDrivenRenderer data={artifact.data} schema={schema} />
+        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+          <TabsList>
+            <TabsTrigger value="data">Data</TabsTrigger>
+            <TabsTrigger value="diagrams" disabled={!hasDiagrams}>
+              Diagrams{hasDiagrams ? "" : " (none)"}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="data" className="mt-3">
+            <SchemaDrivenRenderer data={artifact.data} schema={schema} />
+          </TabsContent>
+
+          <TabsContent value="diagrams" className="mt-3">
+            <ArtifactDiagrams diagrams={artifact.diagrams} onRefresh={handleRefresh} />
+          </TabsContent>
+        </Tabs>
       </div>
 
       <div className="px-4 py-2 border-t border-neutral-800 text-xs text-neutral-500">
-        Workspace: {wsDoc?.workspace?.name ?? "—"} • Version: {String(artifact.version ?? "1")}
+        Workspace: {wsDoc?.workspace?.name ?? "—"}
+        {" • "}Version: {String(artifact.version ?? "1")}
+        {artifact.diagram_fingerprint ? (
+          <>
+            {" • "}Diagram fp: <span className="text-neutral-400">{artifact.diagram_fingerprint.substring(0, 10)}…</span>
+          </>
+        ) : null}
       </div>
     </div>
   );
