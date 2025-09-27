@@ -39,6 +39,7 @@ const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const RenovaWorkspaceService_1 = require("../services/RenovaWorkspaceService");
+const DiagramPanel_1 = require("./DiagramPanel");
 class RenovaPanel {
     static currentPanel;
     panel;
@@ -174,7 +175,6 @@ class RenovaPanel {
                         // 1) Try /resolved on the direct id
                         try {
                             const resolved = await RenovaWorkspaceService_1.RenovaWorkspaceService.capabilityPackResolved(packId);
-                            // basic sanity: ensure playbooks/capabilities exist
                             if (resolved && (resolved.playbooks || resolved.capabilities)) {
                                 reply(true, resolved);
                                 break;
@@ -183,7 +183,7 @@ class RenovaPanel {
                         catch {
                             /* fall through to non-resolved */
                         }
-                        // 2) Fallback: non-resolved pack by id (already contains playbooks/capabilities in your service)
+                        // 2) Fallback: non-resolved pack by id
                         try {
                             const basic = await RenovaWorkspaceService_1.RenovaWorkspaceService.capabilityPackGetById(packId);
                             if (basic && (basic.playbooks || basic.capabilities)) {
@@ -194,7 +194,7 @@ class RenovaPanel {
                         catch {
                             /* fall through to list */
                         }
-                        // 3) Last resort: list with filters and resolve whichever id field is present
+                        // 3) Last resort: list with filters
                         try {
                             const list = await RenovaWorkspaceService_1.RenovaWorkspaceService.capabilityPacksList({ key, version, limit: 1, offset: 0 });
                             const first = Array.isArray(list) && list.length ? list[0] : null;
@@ -237,6 +237,17 @@ class RenovaPanel {
                         catch (e) {
                             reply(false, undefined, e?.message ?? "Failed to fetch capability pack");
                         }
+                        break;
+                    }
+                    // ---- Diagrams: open exported SVG(s) in a new panel (NEW) ----
+                    case "diagram:openSvg": {
+                        const { title, svgs } = (payload ?? {});
+                        if (!svgs || !Array.isArray(svgs) || svgs.length === 0) {
+                            reply(false, undefined, "No SVGs supplied");
+                            break;
+                        }
+                        DiagramPanel_1.DiagramPanel.createFromSvgs(title || "Diagram", svgs);
+                        reply(true, { ok: true });
                         break;
                     }
                     case "hello": {

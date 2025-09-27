@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { RenovaWorkspaceService } from "../services/RenovaWorkspaceService";
+import { DiagramPanel } from "./DiagramPanel";
 
 export class RenovaPanel {
   public static currentPanel: RenovaPanel | undefined;
@@ -152,7 +153,6 @@ export class RenovaPanel {
             // 1) Try /resolved on the direct id
             try {
               const resolved = await RenovaWorkspaceService.capabilityPackResolved(packId);
-              // basic sanity: ensure playbooks/capabilities exist
               if (resolved && (resolved.playbooks || resolved.capabilities)) {
                 reply(true, resolved);
                 break;
@@ -161,7 +161,7 @@ export class RenovaPanel {
               /* fall through to non-resolved */
             }
 
-            // 2) Fallback: non-resolved pack by id (already contains playbooks/capabilities in your service)
+            // 2) Fallback: non-resolved pack by id
             try {
               const basic = await RenovaWorkspaceService.capabilityPackGetById(packId);
               if (basic && (basic.playbooks || basic.capabilities)) {
@@ -172,7 +172,7 @@ export class RenovaPanel {
               /* fall through to list */
             }
 
-            // 3) Last resort: list with filters and resolve whichever id field is present
+            // 3) Last resort: list with filters
             try {
               const list = await RenovaWorkspaceService.capabilityPacksList({ key, version, limit: 1, offset: 0 });
               const first = Array.isArray(list) && list.length ? list[0] : null;
@@ -216,6 +216,18 @@ export class RenovaPanel {
             } catch (e: any) {
               reply(false, undefined, e?.message ?? "Failed to fetch capability pack");
             }
+            break;
+          }
+
+          // ---- Diagrams: open exported SVG(s) in a new panel (NEW) ----
+          case "diagram:openSvg": {
+            const { title, svgs } = (payload ?? {}) as { title?: string; svgs?: string[] };
+            if (!svgs || !Array.isArray(svgs) || svgs.length === 0) {
+              reply(false, undefined, "No SVGs supplied");
+              break;
+            }
+            DiagramPanel.createFromSvgs(title || "Diagram", svgs);
+            reply(true, { ok: true });
             break;
           }
 

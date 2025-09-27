@@ -40,7 +40,9 @@ export type HostReq =
   | { type: "capability:pack:get"; payload: { pack_id?: string; key?: string; version?: string; resolved?: boolean } }
   | { type: "runs:delete";payload: { runId: string } }
   // capability service (NEW)
-  | { type: "capability:pack:resolvedByKeyVersion"; payload: { key: string; version: string } };
+  | { type: "capability:pack:resolvedByKeyVersion"; payload: { key: string; version: string } }
+  // diagrams (NEW)
+  | { type: "diagram:openSvg"; payload: { title?: string; svgs: string[] } };
 
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");
