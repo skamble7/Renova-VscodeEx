@@ -5,8 +5,28 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ArtifactDiagrams from "./ArtifactDiagrams";
 
+/** Keys to hide anywhere in the object tree (case-insensitive) */
+const HIDDEN_KEYS = new Set([
+  "id",
+  "_id",
+  "artifact_id",
+  "sha",
+  "sha1",
+  "sha256",
+  "md5",
+  "fingerprint",
+  "diagram_fingerprint",
+  "etag",
+  "generated_from_fingerprint",
+  // add more as needed
+]);
+
+function shouldHideKey(k: string) {
+  return HIDDEN_KEYS.has(k?.toLowerCase?.() ?? "");
+}
+
 /**
- * Artifact viewer: now has Data + Diagrams tabs.
+ * Artifact viewer: Data + Diagrams tabs.
  */
 export default function ArtifactView() {
   const { artifacts, selectedArtifactId, getKindSchema, refreshArtifact, wsDoc } = useRenovaStore();
@@ -35,7 +55,6 @@ export default function ArtifactView() {
   }, [artifact?.kind, getKindSchema]);
 
   useEffect(() => {
-    // If diagrams exist, remember last chosen tab per artifact; default to "diagrams" when present?
     if (!artifact) return;
     const key = `renova:artifact:${artifact.artifact_id}:tab`;
     const saved = localStorage.getItem(key) as "data" | "diagrams" | null;
@@ -95,7 +114,10 @@ export default function ArtifactView() {
         {" • "}Version: {String(artifact.version ?? "1")}
         {artifact.diagram_fingerprint ? (
           <>
-            {" • "}Diagram fp: <span className="text-neutral-400">{artifact.diagram_fingerprint.substring(0, 10)}…</span>
+            {" • "}Diagram fp:{" "}
+            <span className="text-neutral-400">
+              {String(artifact.diagram_fingerprint).slice(0, 10)}…
+            </span>
           </>
         ) : null}
       </div>
@@ -103,7 +125,7 @@ export default function ArtifactView() {
   );
 }
 
-/* ---------- Schema-driven fallback (trimmed from Raina) ---------- */
+/* ---------- Schema-driven fallback (trimmed) ---------- */
 
 function SchemaDrivenRenderer({ data, schema }: { data: any; schema: any | null }) {
   if (!schema) return <PreFallback title="Preview" data={data} />;
@@ -117,21 +139,22 @@ function RenderArray({ data }: { data: any[] }) {
   const rows = data;
   const first = rows[0];
   const firstProps = isPlainObject(first) ? Object.keys(first) : [];
+  const visibleHeaders = firstProps.filter((h) => !shouldHideKey(h));
   const uniform =
     rows.length > 0 &&
     isPlainObject(first) &&
     rows.every((r) => isPlainObject(r) && shallowSameKeys(Object.keys(r), firstProps));
 
-  if (uniform && firstProps.length > 0) {
+  if (uniform && visibleHeaders.length > 0) {
     return (
       <table className="w-full text-sm">
         <thead className="bg-neutral-950 text-neutral-400">
-          <tr>{firstProps.map((h) => (<th key={h} className="text-left p-2">{h}</th>))}</tr>
+          <tr>{visibleHeaders.map((h) => (<th key={h} className="text-left p-2">{h}</th>))}</tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} className="border-t border-neutral-800">
-              {firstProps.map((h) => (<td key={h} className="p-2 align-top">{renderCell(r[h])}</td>))}
+              {visibleHeaders.map((h) => (<td key={h} className="p-2 align-top">{renderCell((r as any)[h])}</td>))}
             </tr>
           ))}
         </tbody>
@@ -151,7 +174,8 @@ function RenderArray({ data }: { data: any[] }) {
 }
 
 function RenderObject({ data }: { data: Record<string, any> }) {
-  const order = Object.keys(data);
+  // Filter hidden keys at this level
+  const order = Object.keys(data).filter((k) => !shouldHideKey(k));
   const arrayKeys = order.filter((k) => Array.isArray(data[k]));
   const primary = arrayKeys[0];
 

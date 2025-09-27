@@ -6,7 +6,8 @@ import React, { useEffect, useId, useRef, useState } from "react";
  * - dynamically imports mermaid to keep initial bundle smaller,
  * - renders into a shadow span via mermaid.render(),
  * - auto-re-renders when the instructions change,
- * - gracefully shows parse errors.
+ * - gracefully shows parse errors,
+ * - supports client-side zoom via CSS transform.
  *
  * Works in VS Code webviews (no window globals required).
  */
@@ -17,6 +18,8 @@ export default function Mermaid({
   maxWidth = "100%",
   className,
   config,
+  /** NEW: scale factor for zoom (1 = 100%) */
+  scale = 1,
 }: {
   code: string;
   theme?: "dark" | "neutral" | "forest" | "base";
@@ -25,9 +28,11 @@ export default function Mermaid({
   className?: string;
   /** extra mermaid.initialize config */
   config?: Record<string, any>;
+  scale?: number;
 }) {
   const rid = useId().replace(/:/g, "_");
-  const targetRef = useRef<HTMLDivElement | null>(null);
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,13 +41,11 @@ export default function Mermaid({
     async function run() {
       setErr(null);
       try {
-        // Dynamic import for mermaid (no SSR in webview)
         const mermaid = (await import("mermaid")).default;
-        // Init once per render cycle—safe in mermaid v10+
         mermaid.initialize({
           startOnLoad: false,
           theme,
-          securityLevel: "strict", // good for webviews
+          securityLevel: "strict",
           fontSize,
           flowchart: { useMaxWidth: true, htmlLabels: false },
           ...config,
@@ -50,8 +53,8 @@ export default function Mermaid({
 
         const { svg } = await mermaid.render(`mmd_${rid}`, code);
         if (!mounted) return;
-        if (targetRef.current) {
-          targetRef.current.innerHTML = svg;
+        if (innerRef.current) {
+          innerRef.current.innerHTML = svg;
         }
       } catch (e: any) {
         if (!mounted) return;
@@ -67,13 +70,24 @@ export default function Mermaid({
   }, [code, theme, fontSize, JSON.stringify(config)]);
 
   return (
-    <div className={["w-full", className ?? ""].join(" ")} style={{ maxWidth }}>
+    <div
+      ref={outerRef}
+      className={["w-full overflow-auto", className ?? ""].join(" ")}
+      style={{ maxWidth }}
+    >
       {err ? (
         <div className="text-xs text-red-400 rounded border border-red-800 bg-red-950/30 p-2 whitespace-pre-wrap">
           Mermaid render error: {err}
         </div>
       ) : (
-        <div ref={targetRef} className="overflow-auto" />
+        <div
+          // This wrapper hosts the SVG and applies zoom
+          ref={innerRef}
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+        />
       )}
     </div>
   );
