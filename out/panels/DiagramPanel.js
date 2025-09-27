@@ -36,8 +36,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiagramPanel = void 0;
 const vscode = __importStar(require("vscode"));
 class DiagramPanel {
-    static createFromSvgs(title, svgs) {
-        const panel = vscode.window.createWebviewPanel("renovaDiagram", title || "Diagram", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }, {
+    /**
+     * Create a diagram webview in the desired editor group.
+     * If `column` is omitted, we default to the current active group.
+     */
+    static createFromSvgs(title, svgs, column, preserveFocus = false) {
+        // Use the provided column (typically Renova panel's viewColumn),
+        // falling back to the current active editor group.
+        const showOptions = column !== undefined
+            ? { viewColumn: column, preserveFocus }
+            : vscode.ViewColumn.Active;
+        const panel = vscode.window.createWebviewPanel("renovaDiagram", title || "Diagram", showOptions, {
             enableScripts: false, // no scripts needed for static SVG
             retainContextWhenHidden: false,
         });
@@ -69,9 +78,7 @@ class DiagramPanel {
     color: #e5e5e5;
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   }
-  .container {
-    padding: 12px 16px 24px;
-  }
+  .container { padding: 12px 16px 24px; }
   .svg-wrap {
     overflow: auto;
     border: 1px solid #2a2a2a;

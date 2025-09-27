@@ -16,7 +16,8 @@ export class RenovaPanel {
   }
 
   public static createOrShow(extensionUri: vscode.Uri) {
-    const column = vscode.ViewColumn.One;
+    // Use the active group rather than forcing group One.
+    const column = vscode.ViewColumn.Active;
     if (RenovaPanel.currentPanel) {
       RenovaPanel.currentPanel.panel.reveal(column);
       return;
@@ -147,32 +148,24 @@ export class RenovaPanel {
               break;
             }
 
-            // Prefer direct pack_id form (e.g. "cobol-mainframe@v1.0.2")
             const packId = `${key}@${version}`;
 
-            // 1) Try /resolved on the direct id
             try {
               const resolved = await RenovaWorkspaceService.capabilityPackResolved(packId);
               if (resolved && (resolved.playbooks || resolved.capabilities)) {
                 reply(true, resolved);
                 break;
               }
-            } catch {
-              /* fall through to non-resolved */
-            }
+            } catch {}
 
-            // 2) Fallback: non-resolved pack by id
             try {
               const basic = await RenovaWorkspaceService.capabilityPackGetById(packId);
               if (basic && (basic.playbooks || basic.capabilities)) {
                 reply(true, basic);
                 break;
               }
-            } catch {
-              /* fall through to list */
-            }
+            } catch {}
 
-            // 3) Last resort: list with filters
             try {
               const list = await RenovaWorkspaceService.capabilityPacksList({ key, version, limit: 1, offset: 0 });
               const first = Array.isArray(list) && list.length ? list[0] : null;
@@ -209,7 +202,7 @@ export class RenovaPanel {
                   const data = await RenovaWorkspaceService.capabilityPackResolved(id);
                   reply(true, data);
                   break;
-                } catch {/* fall back */ }
+                } catch {}
               }
               const basic = await RenovaWorkspaceService.capabilityPackGetById(id);
               reply(true, basic);
@@ -219,14 +212,16 @@ export class RenovaPanel {
             break;
           }
 
-          // ---- Diagrams: open exported SVG(s) in a new panel (NEW) ----
+          // ---- Diagrams: open exported SVG(s) in a new panel, same tab group ----
           case "diagram:openSvg": {
             const { title, svgs } = (payload ?? {}) as { title?: string; svgs?: string[] };
             if (!svgs || !Array.isArray(svgs) || svgs.length === 0) {
               reply(false, undefined, "No SVGs supplied");
               break;
             }
-            DiagramPanel.createFromSvgs(title || "Diagram", svgs);
+            // Key change: use THIS panel's viewColumn so we open in the SAME editor group.
+            const col = this.panel.viewColumn ?? vscode.ViewColumn.Active;
+            DiagramPanel.createFromSvgs(title || "Diagram", svgs, col, false);
             reply(true, { ok: true });
             break;
           }
